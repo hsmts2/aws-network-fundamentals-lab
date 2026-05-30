@@ -1,1 +1,406 @@
+# aws-network-fundamentals-lab
+
+「AWSネットワーク入門」の学習内容を、AWS CloudFormation で再現するためのリポジトリです。
+
+本リポジトリは、書籍で学習した AWS ネットワーク構成を、自分の理解に基づいて Infrastructure as Code として整理したものです。
+書籍内容を転載するものではなく、学習した構成を CloudFormation テンプレートとして再現・管理することを目的としています。
+
+---
+
+<br>
+
+## 概要
+
+本リポジトリでは、書籍で学習した AWS ネットワーク構成のうち、VPC、EC2、NAT Gateway、Application Load Balancer、Web サーバー、DB サーバー構成を CloudFormation テンプレートとして管理します。
+
+手順ベースで作成した AWS リソースを IaC（Infrastructure as Code）として定義することで、構成の再現性、変更管理、レビュー、再デプロイを容易にすることを目的としています。
+
+> **学習目的**: VPC 設計、パブリックサブネット、プライベートサブネット、Internet Gateway、NAT Gateway、セキュリティグループ、EC2、ALB、Apache、MariaDB、WordPress、Web / DB 分離構成の理解
+
+---
+
+<br>
+
+## 対象書籍と学習範囲
+
+| 項目            | 内容                                                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 対象書籍          | AWSネットワーク入門                                                                                                                                |
+| 学習テーマ         | AWS 上でのネットワーク構築                                                                                                                            |
+| 主な学習対象        | VPC / EC2 / Internet Gateway / NAT Gateway / Security Group / Network ACL / ALB / Route 53 / VPC Endpoint / VPC Peering / Site-to-Site VPN |
+| 本リポジトリで作成する範囲 | VPC / EC2 / NAT Gateway / Security Group / ALB / Apache / MariaDB / WordPress                                                              |
+| 作成するAWS構成     | ALB + Web サーバー2台 + DB サーバーの構成                                                                                                              |
+| IaC           | AWS CloudFormation                                                                                                                         |
+| テンプレート形式      | YAML                                                                                                                                       |
+| リージョン         | `ap-northeast-1`                                                                                                                           |
+
+このリポジトリでは、書籍で手動構築した内容をもとに、CloudFormation で同等の学習環境を再現できるようにしています。
+
+なお、Route 53、ACM、VPC Peering、Site-to-Site VPN などは、ドメイン取得や外部ネットワーク環境への依存があるため、本テンプレートでは対象外としています。
+
+---
+
+<br>
+
+## リポジトリの目的
+
+このリポジトリの目的は、単に CloudFormation テンプレートを保存することではなく、以下の観点を整理することです。
+
+* AWS ネットワーク構成をコードとして再現する
+* 手動構築した内容を CloudFormation に置き換える
+* VPC、サブネット、ルートテーブル、セキュリティグループの関係を整理する
+* パブリックサブネットとプライベートサブネットの役割を理解する
+* NAT Gateway によるプライベートサブネットからのアウトバウンド通信を理解する
+* ALB による Web サーバーの負荷分散構成を理解する
+* Web サーバーと DB サーバーを分離した基本的な構成を理解する
+* GitHub 上で学習成果をポートフォリオとして管理する
+* README、構成図、パラメータファイル、`.gitignore` を含めたリポジトリ運用を学ぶ
+
+---
+
+<br>
+
+## アーキテクチャ
+
+以下は、本リポジトリの CloudFormation テンプレートで作成する AWS 構成図です。
+
+<img src="./diagrams/aws-network-fundamentals-architecture.png" alt="Architecture" width="900">
+
+---
+
+<br>
+
+## 作成される構成
+
+```text
+Internet
+  |
+  | HTTP:80
+  v
+Application Load Balancer
+  |
+  | HTTP:80
+  v
+Web Server EC2 x 2
+  |
+  | TCP:3306
+  v
+DB Server EC2
+```
+
+ネットワーク構成は以下です。
+
+```text
+VPC: 10.0.0.0/16
+├── Public Subnet A: 10.0.0.0/24
+│   ├── NAT Gateway
+│   └── Web Server A
+│
+├── Public Subnet C: 10.0.10.0/24
+│   └── Web Server C
+│
+└── Private Subnet A: 10.0.1.0/24
+    └── DB Server
+```
+
+---
+
+<br>
+
+## 作成される主な AWS リソース
+
+| Resource                  | 設定値 / 備考                                  |
+| ------------------------- | ----------------------------------------- |
+| VPC                       | CIDR: `10.0.0.0/16` / DNS ホスト名: 有効        |
+| パブリックサブネット A              | `10.0.0.0/24`                             |
+| パブリックサブネット C              | `10.0.10.0/24`                            |
+| プライベートサブネット A             | `10.0.1.0/24`                             |
+| Internet Gateway          | VPC にアタッチ                                 |
+| NAT Gateway               | パブリックサブネット A に配置 / Elastic IP を割り当て       |
+| ルートテーブル                   | パブリック用・プライベート用                            |
+| セキュリティグループ                | ALB 用 / Web 用 / DB 用                      |
+| IAM ロール                   | EC2 用 IAM ロール / SSM Session Manager 対応    |
+| EC2 Web サーバー A            | Amazon Linux 2 / Apache / PHP / WordPress |
+| EC2 Web サーバー C            | Amazon Linux 2 / Apache / PHP / WordPress |
+| EC2 DB サーバー               | Amazon Linux 2 / MariaDB                  |
+| Application Load Balancer | Internet-facing / HTTP:80                 |
+| Target Group              | Web サーバー2台を登録                             |
+| Listener                  | HTTP:80                                   |
+
+---
+
+<br>
+
+## 本テンプレートで対象外にしたもの
+
+| 対象外              | 理由                               |
+| ---------------- | -------------------------------- |
+| Route 53         | ドメイン取得やDNS設定が環境依存になるため           |
+| ACM              | HTTPS化にはドメインと証明書検証が必要になるため       |
+| VPC Peering      | 今回は単一VPCの構成に絞るため                 |
+| Site-to-Site VPN | 個人検証環境では接続先ルーターの準備が難しいため         |
+| VPC Endpoint     | 別テンプレートまたは追加検証として扱うため            |
+| RDS              | 書籍の学習構成に合わせ、EC2 上の MariaDB として構築 |
+
+---
+
+<br>
+
+## ディレクトリ構成
+
+```text
+.
+├── README.md
+├── templates/
+│   └── aws-network-fundamentals.yaml
+├── parameters/
+│   └── aws-network-fundamentals-lab.example.json
+├── diagrams/
+│   └── aws-network-fundamentals-architecture.png
+└── docs/
+    └── notes.md
+```
+
+---
+
+<br>
+
+## CloudFormation テンプレート
+
+CloudFormation テンプレートは以下に格納しています。
+
+```text
+templates/aws-network-fundamentals.yaml
+```
+
+このテンプレートでは、VPC、サブネット、Internet Gateway、NAT Gateway、ルートテーブル、セキュリティグループ、IAM ロール、EC2 インスタンス、Application Load Balancer、Target Group などをまとめて作成します。
+
+---
+
+<br>
+
+## パラメータファイル
+
+パラメータファイルのサンプルは以下に格納しています。
+
+```text
+parameters/aws-network-fundamentals-lab.example.json
+```
+
+実際にデプロイする場合は、サンプルファイルをコピーして使用します。
+
+```bash
+cp parameters/aws-network-fundamentals-lab.example.json parameters/aws-network-fundamentals-lab.json
+```
+
+`parameters/aws-network-fundamentals-lab.json` には、自分の環境に合わせた値を設定します。
+
+例：
+
+```json
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "aws-network-fundamentals"
+  },
+  {
+    "ParameterKey": "KeyName",
+    "ParameterValue": "your-key-name"
+  },
+  {
+    "ParameterKey": "MyIpCidr",
+    "ParameterValue": "your-global-ip/32"
+  },
+  {
+    "ParameterKey": "DbPassword",
+    "ParameterValue": "ChangeMe123!"
+  }
+]
+```
+
+> `parameters/aws-network-fundamentals-lab.json` は実環境用のファイルのため、GitHub にはコミットしない運用とします。
+
+---
+
+<br>
+
+## 前提条件
+
+以下の環境が必要です。
+
+* AWS CLI v2
+* AWS CLI の認証設定済み環境
+* デプロイ先 AWS アカウント
+* デプロイ先リージョン: `ap-northeast-1`
+* 既存の EC2 キーペア
+* CloudFormation、EC2、VPC、IAM、ELB 関連リソースを作成・更新・削除できる IAM 権限
+
+---
+
+<br>
+
+## 使い方
+
+### スタック作成
+
+```bash
+aws cloudformation create-stack \
+  --stack-name aws-network-fundamentals-lab \
+  --template-body file://templates/aws-network-fundamentals.yaml \
+  --parameters file://parameters/aws-network-fundamentals-lab.json \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
+```
+
+### スタック状態確認
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name aws-network-fundamentals-lab \
+  --region ap-northeast-1
+```
+
+### スタック更新
+
+```bash
+aws cloudformation update-stack \
+  --stack-name aws-network-fundamentals-lab \
+  --template-body file://templates/aws-network-fundamentals.yaml \
+  --parameters file://parameters/aws-network-fundamentals-lab.json \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
+```
+
+### スタック削除
+
+```bash
+aws cloudformation delete-stack \
+  --stack-name aws-network-fundamentals-lab \
+  --region ap-northeast-1
+```
+
+---
+
+<br>
+
+## 動作確認
+
+スタック作成後、CloudFormation の Outputs に表示される `AlbDnsName` を確認します。
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name aws-network-fundamentals-lab \
+  --query "Stacks[0].Outputs" \
+  --region ap-northeast-1
+```
+
+`AlbDnsName` の URL にブラウザでアクセスします。
+
+```text
+http://ALBのDNS名/
+```
+
+WordPress の初期インストール画面が表示されれば成功です。
+
+---
+
+<br>
+
+## WordPress 初期設定例
+
+| 項目                       | 設定例                                           |
+| ------------------------ | --------------------------------------------- |
+| Site Title               | AWS Network Fundamentals                      |
+| Username                 | wpadmin                                       |
+| Password                 | 自動生成パスワードまたは任意の強力なパスワード                       |
+| Your Email               | [admin@example.com](mailto:admin@example.com) |
+| Search engine visibility | 検証環境ではチェック推奨                                  |
+
+---
+
+<br>
+
+## セキュリティ
+
+以下の情報は絶対にコミットしないでください。
+
+| 禁止ファイル / 情報                   | 理由                        |
+| ----------------------------- | ------------------------- |
+| `*.pem`                       | EC2 接続用秘密鍵                |
+| `*.key`                       | 秘密鍵ファイル                   |
+| `*accesskey*` / `*secretkey*` | AWS 認証情報                  |
+| `.env`                        | 環境変数ファイル                  |
+| 実環境用パラメータファイル                 | IP アドレスや環境固有情報を含む可能性があるため |
+| DB パスワード                      | 認証情報漏洩防止のため               |
+
+これらは `.gitignore` で除外することを推奨します。
+
+万一、AWS アクセスキーや秘密鍵をコミットした場合は、該当キーを即座に無効化・ローテーションしてください。
+
+---
+
+<br>
+
+## 課金に関する注意
+
+このテンプレートでは、以下のリソースで課金が発生する可能性があります。
+
+| リソース                      | 注意点              |
+| ------------------------- | ---------------- |
+| EC2                       | インスタンス稼働時間に応じて課金 |
+| EBS                       | ボリューム容量に応じて課金    |
+| NAT Gateway               | 時間課金とデータ処理課金が発生  |
+| Elastic IP                | NAT Gateway で使用  |
+| Application Load Balancer | 時間課金と LCU 課金が発生  |
+| データ転送                     | 通信量に応じて課金される場合あり |
+
+特に NAT Gateway と Application Load Balancer は、起動している時間に応じて課金されるため、検証後は必ずスタックを削除してください。
+
+---
+
+<br>
+
+## 補足メモ
+
+学習メモや補足手順は、以下にまとめます。
+
+```text
+docs/notes.md
+```
+
+また、詳細な学習記録や手順書は Confluence 側に整理します。
+
+```text
+Confluenceリンクを挿し入れ
+```
+
+---
+
+<br>
+
+## 今後の拡張案
+
+今後、以下の拡張も検討できます。
+
+* S3 Gateway Endpoint の追加
+* S3 Interface Endpoint の追加
+* Route 53 による独自ドメイン設定
+* ACM による HTTPS 化
+* EC2 上の MariaDB から RDS への置き換え
+* Auto Scaling Group の導入
+* CloudWatch Logs によるログ収集
+* Systems Manager Session Manager による SSH レス運用
+* GitHub Actions による CloudFormation Lint / Validate
+
+---
+
+<br>
+
+## 参考
+
+* AWSネットワーク入門
+* [AWS CloudFormation ユーザーガイド](https://docs.aws.amazon.com/ja_jp/AWSCloudFormation/latest/UserGuide/)
+* [Amazon VPC ユーザーガイド](https://docs.aws.amazon.com/ja_jp/vpc/latest/userguide/)
+* [Elastic Load Balancing ユーザーガイド](https://docs.aws.amazon.com/ja_jp/elasticloadbalancing/latest/userguide/)
+* [AWS CLI コマンドリファレンス](https://docs.aws.amazon.com/cli/latest/reference/)
 
