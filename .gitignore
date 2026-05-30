@@ -1,1 +1,40 @@
+# OS files
+.DS_Store
+Thumbs.db
 
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AWS credentials
+.aws/
+credentials
+config
+*accesskey*
+*secretkey*
+
+# CloudFormation packaged files
+packaged.yaml
+*.packaged.yaml
+
+# Local parameter files
+parameters/*.json
+!parameters/*.example.json
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+.env
+.env.*
