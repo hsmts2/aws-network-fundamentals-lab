@@ -1,1 +1,465 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Network Intro - VPC, EC2, ALB, NAT Gateway, WordPress and MariaDB
 
+Parameters:
+  ProjectName:
+    Type: String
+    Default: aws-network-intro
+    Description: Project name used for resource Name tags.
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 key pair name for SSH access.
+
+  MyIpCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: SSH access source CIDR. Example 203.0.113.10/32.
+
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Default: mypassword
+    MinLength: 8
+    Description: Password for WordPress database user.
+
+  LatestAmazonLinux2Ami:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-kernel-5.10-hvm-x86_64-gp2
+
+Resources:
+  # ------------------------------------------------------------
+  # VPC
+  # ------------------------------------------------------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-igw
+
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  # ------------------------------------------------------------
+  # Subnets
+  # ------------------------------------------------------------
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-subnet-a
+
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: ap-northeast-1c
+      CidrBlock: 10.0.10.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-subnet-c
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-subnet-a
+
+  # ------------------------------------------------------------
+  # Route Tables
+  # ------------------------------------------------------------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-rtb
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachInternetGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetCAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicRouteTable
+
+  NatGatewayEip:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachInternetGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-nat-eip
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      AllocationId: !GetAtt NatGatewayEip.AllocationId
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-natgw
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-rtb
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ------------------------------------------------------------
+  # Security Groups
+  # ------------------------------------------------------------
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${ProjectName}-alb-sg
+      GroupDescription: Security group for ALB
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - Description: Allow HTTP from Internet
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - Description: Allow all outbound
+          IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-alb-sg
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${ProjectName}-web-sg
+      GroupDescription: Security group for web servers
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - Description: Allow HTTP from ALB
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+        - Description: Allow SSH from my IP
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIpCidr
+      SecurityGroupEgress:
+        - Description: Allow all outbound
+          IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-web-sg
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${ProjectName}-db-sg
+      GroupDescription: Security group for database server
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - Description: Allow MariaDB from web servers
+          IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref WebSecurityGroup
+        - Description: Allow SSH from web servers
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref WebSecurityGroup
+      SecurityGroupEgress:
+        - Description: Allow all outbound
+          IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-db-sg
+
+  # ------------------------------------------------------------
+  # IAM Role for EC2
+  # ------------------------------------------------------------
+  Ec2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-ec2-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-role
+
+  Ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub ${ProjectName}-ec2-instance-profile
+      Roles:
+        - !Ref Ec2Role
+
+  # ------------------------------------------------------------
+  # DB Server
+  # ------------------------------------------------------------
+  DbServer:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - PrivateDefaultRoute
+    Properties:
+      ImageId: !Ref LatestAmazonLinux2Ami
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref Ec2InstanceProfile
+      SubnetId: !Ref PrivateSubnetA
+      SecurityGroupIds:
+        - !Ref DbSecurityGroup
+      PrivateIpAddress: 10.0.1.220
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-db-server
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y mariadb-server
+          systemctl start mariadb
+          systemctl enable mariadb
+
+          mysql -u root <<SQL
+          CREATE DATABASE IF NOT EXISTS wordpressdb CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+          CREATE USER IF NOT EXISTS 'wordpress'@'%' IDENTIFIED BY '${DbPassword}';
+          GRANT ALL PRIVILEGES ON wordpressdb.* TO 'wordpress'@'%';
+          FLUSH PRIVILEGES;
+          SQL
+
+  # ------------------------------------------------------------
+  # Web Servers
+  # ------------------------------------------------------------
+  WebServerA:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - DbServer
+      - PublicDefaultRoute
+    Properties:
+      ImageId: !Ref LatestAmazonLinux2Ami
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref Ec2InstanceProfile
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroupIds:
+        - !Ref WebSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-web-server-a
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd mariadb wget tar
+
+          amazon-linux-extras install -y php8.0
+          yum install -y php-mysqlnd php-mbstring php-gd php-xml php-json
+
+          systemctl start httpd
+          systemctl enable httpd
+
+          cd /tmp
+          wget https://wordpress.org/latest.tar.gz
+          tar zxvf latest.tar.gz
+          cp -a wordpress/. /var/www/html/
+
+          cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
+          sed -i "s/database_name_here/wordpressdb/" /var/www/html/wp-config.php
+          sed -i "s/username_here/wordpress/" /var/www/html/wp-config.php
+          sed -i "s/password_here/${DbPassword}/" /var/www/html/wp-config.php
+          sed -i "s/localhost/10.0.1.220/" /var/www/html/wp-config.php
+
+          chown -R apache:apache /var/www/html
+          systemctl restart httpd
+
+  WebServerC:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - DbServer
+      - PublicDefaultRoute
+    Properties:
+      ImageId: !Ref LatestAmazonLinux2Ami
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref Ec2InstanceProfile
+      SubnetId: !Ref PublicSubnetC
+      SecurityGroupIds:
+        - !Ref WebSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-web-server-c
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y httpd mariadb wget tar
+
+          amazon-linux-extras install -y php8.0
+          yum install -y php-mysqlnd php-mbstring php-gd php-xml php-json
+
+          systemctl start httpd
+          systemctl enable httpd
+
+          cd /tmp
+          wget https://wordpress.org/latest.tar.gz
+          tar zxvf latest.tar.gz
+          cp -a wordpress/. /var/www/html/
+
+          cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
+          sed -i "s/database_name_here/wordpressdb/" /var/www/html/wp-config.php
+          sed -i "s/username_here/wordpress/" /var/www/html/wp-config.php
+          sed -i "s/password_here/${DbPassword}/" /var/www/html/wp-config.php
+          sed -i "s/localhost/10.0.1.220/" /var/www/html/wp-config.php
+
+          chown -R apache:apache /var/www/html
+          systemctl restart httpd
+
+  # ------------------------------------------------------------
+  # ALB
+  # ------------------------------------------------------------
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${ProjectName}-tg
+      VpcId: !Ref Vpc
+      Protocol: HTTP
+      Port: 80
+      TargetType: instance
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      Matcher:
+        HttpCode: 200-399
+      Targets:
+        - Id: !Ref WebServerA
+          Port: 80
+        - Id: !Ref WebServerC
+          Port: 80
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-tg
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${ProjectName}-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-alb
+
+  AlbListenerHttp:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref Vpc
+
+  PublicSubnetAId:
+    Description: Public subnet A ID
+    Value: !Ref PublicSubnetA
+
+  PublicSubnetCId:
+    Description: Public subnet C ID
+    Value: !Ref PublicSubnetC
+
+  PrivateSubnetAId:
+    Description: Private subnet A ID
+    Value: !Ref PrivateSubnetA
+
+  AlbDnsName:
+    Description: Access URL for the Application Load Balancer
+    Value: !Sub http://${ApplicationLoadBalancer.DNSName}/
+
+  WebServerAPublicIp:
+    Description: Public IP address of WebServerA
+    Value: !GetAtt WebServerA.PublicIp
+
+  WebServerCPublicIp:
+    Description: Public IP address of WebServerC
+    Value: !GetAtt WebServerC.PublicIp
+
+  DbServerPrivateIp:
+    Description: Private IP address of DB server
+    Value: !GetAtt DbServer.PrivateIp
