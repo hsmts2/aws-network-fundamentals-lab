@@ -34,9 +34,6 @@
 | テンプレート形式      | YAML                                                                                                                                       |
 | リージョン         | `ap-northeast-1`                                                                                                                           |
 
-このリポジトリでは、書籍で手動構築した内容をもとに、CloudFormation で同等の学習環境を再現できるようにしています。
-
-なお、Route 53、ACM、VPC Peering、Site-to-Site VPN などは、ドメイン取得や外部ネットワーク環境への依存があるため、本テンプレートでは対象外としています。
 
 ---
 
@@ -193,8 +190,6 @@ parameters/aws-network-fundamentals-lab.example.json
 cp parameters/aws-network-fundamentals-lab.example.json parameters/aws-network-fundamentals-lab.json
 ```
 
-`parameters/aws-network-fundamentals-lab.json` には、自分の環境に合わせた値を設定します。
-
 例：
 
 ```json
@@ -218,7 +213,6 @@ cp parameters/aws-network-fundamentals-lab.example.json parameters/aws-network-f
 ]
 ```
 
-> `parameters/aws-network-fundamentals-lab.json` は実環境用のファイルのため、GitHub にはコミットしない運用とします。
 
 ---
 
