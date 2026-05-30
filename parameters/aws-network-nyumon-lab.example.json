@@ -1,1 +1,18 @@
-
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "aws-network-nyumon"
+  },
+  {
+    "ParameterKey": "KeyName",
+    "ParameterValue": "your-key-name"
+  },
+  {
+    "ParameterKey": "MyIpCidr",
+    "ParameterValue": "your-global-ip/32"
+  },
+  {
+    "ParameterKey": "DbPassword",
+    "ParameterValue": "ChangeMe123!"
+  }
+]
