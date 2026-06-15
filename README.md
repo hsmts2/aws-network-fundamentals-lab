@@ -57,6 +57,19 @@
 
 <br>
 
+## このリポジトリで示せるスキル
+
+* AWS VPC / Subnet / Route Table / Security Group の基本設計
+* CloudFormation によるインフラ構成のコード化
+* ALB と複数 EC2 を組み合わせた Web 基盤構築
+* Web サーバーと DB サーバーを分離した構成理解
+* 秘匿情報を Git 管理から除外する運用
+* 構成図、README、パラメータ例を含めた再現可能なドキュメント整備
+
+---
+
+<br>
+
 ## アーキテクチャ
 
 以下は、本リポジトリの CloudFormation テンプレートで作成する AWS 構成図です。
@@ -360,12 +373,6 @@ WordPress の初期インストール画面が表示されれば成功です。
 
 ```text
 docs/notes.md
-```
-
-また、詳細な学習記録や手順書は Confluence 側に整理します。
-
-```text
-Confluenceリンクを挿し入れ
 ```
 
 ---
