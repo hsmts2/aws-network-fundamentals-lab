@@ -159,9 +159,7 @@ VPC: 10.0.0.0/16
 
 CloudFormation テンプレートは以下に格納しています。
 
-```text
-templates/aws-network-fundamentals.yaml
-```
+[templates/aws-network-fundamentals.yaml](templates/aws-network-fundamentals.yaml)
 
 このテンプレートでは、VPC、サブネット、Internet Gateway、NAT Gateway、ルートテーブル、セキュリティグループ、IAM ロール、EC2 インスタンス、Application Load Balancer、Target Group などをまとめて作成します。
 
@@ -173,9 +171,7 @@ templates/aws-network-fundamentals.yaml
 
 パラメータファイルのサンプルは以下に格納しています。
 
-```text
-parameters/aws-network-fundamentals-lab.example.json
-```
+[parameters/aws-network-fundamentals-lab.example.json](parameters/aws-network-fundamentals-lab.example.json)
 
 実際にデプロイする場合は、サンプルファイルをコピーして使用します。
 
@@ -252,7 +248,7 @@ aws cloudformation describe-stacks \
 `AlbDnsName` の URL にブラウザでアクセスし、WordPress の初期インストール画面が表示されれば成功です。
 
 ```text
-http://ALBのDNS名/
+http://<ALB_DNS_NAME>/
 ```
 
 ### スタック更新
