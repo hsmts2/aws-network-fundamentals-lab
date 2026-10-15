@@ -277,11 +277,3 @@ aws cloudformation delete-stack \
 ## 設計上の補足
 
 WordPress 初期設定時は、任意のサイト名、管理ユーザー名、強力なパスワード、検証用メールアドレスを設定します。検証環境では検索エンジンにインデックスされないよう、Search engine visibility のチェックを推奨します。
-
----
-
-<br>
-
-## 書籍との差分
-
-書籍の学習構成に合わせるため、DB は RDS ではなく EC2 上の MariaDB として構築します。Route 53、ACM、VPC Endpoint などは、ドメインや検証環境への依存が大きいため、このテンプレートでは対象外にしています。
